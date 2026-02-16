@@ -1,0 +1,17 @@
+name: labelis-render-only
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - numpy
+  - pandas
+  - scipy
+  - scikit-image
+  - tifffile
+  - napari
+  - pyqt
+  - numba  # optional but recommended for speed
+  - opencv  # optional (only if you later need Hough cv2, not required for render-only)
+  - pip
+  # If Labelis is not installed as a package yet, you can:
+  #   pip install -e /path/to/labelis_repo
