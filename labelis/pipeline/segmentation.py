@@ -8,6 +8,8 @@ import numpy as np
 from scipy.ndimage import convolve
 from skimage import exposure, feature, transform, filters
 
+from skimage.measure import regionprops
+
 try:
     import cv2  # type: ignore
     _HAVE_CV2 = True
@@ -267,6 +269,8 @@ def locate_npcs_blob_log(
     centers, radii, metric = remove_duplicate_circles(centers, radii, metric, min_distance_px=minDist)
     return centers, radii, metric
 
+from typing import Optional
+from .config import PipelineConfig
 
 def locate_npcs_dispatch(
     engine: str,
@@ -276,6 +280,7 @@ def locate_npcs_dispatch(
     pixel_size_nm: float,
     min_distance_nm: float,
     circle_radius_range_nm: Tuple[float, float] = (40.0, 60.0),
+    cfg : Optional["PipelineConfig"] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     if engine == "hough_cv2":
         return locate_npcs_hough_cv2(
@@ -300,4 +305,108 @@ def locate_npcs_dispatch(
             pixel_size_nm=pixel_size_nm,
             min_distance_nm=min_distance_nm,
         )
+
+    if engine == "cpsam":
+        if cfg is None:
+            raise ValueError("cfg must be provided when engine='cpsam'")
+        return locate_npcs_cpsam(
+            image=image_to_segment,
+            pixel_size_nm=pixel_size_nm,
+            min_distance_nm=min_distance_nm,
+            radius_range_nm=circle_radius_range_nm,
+            cfg=cfg,
+        )
+
     raise ValueError(f"Unknown segmentation engine: {engine}")
+
+def locate_npcs_cpsam(
+    image,
+    pixel_size_nm,
+    min_distance_nm,
+    radius_range_nm,
+    cfg,
+):
+    """
+    Use Cellpose-SAM to segment image and convert masks to circle candidates.
+    """
+
+    from napari_cellpose_sam.segmentation import segment_single_slice
+
+    img = np.asarray(image, dtype=np.float32)
+
+    masks, flows = segment_single_slice(
+        img,
+        model_type=cfg.cpsam_model,
+        model_path=cfg.cpsam_custom_model_path or None,
+        flow_threshold=cfg.cpsam_flow_threshold,
+        cellprob_threshold=cfg.cpsam_cellprob_threshold,
+        #gpu=cfg.cpsam_use_gpu,
+    )
+
+    if masks is None or np.max(masks) == 0:
+        return (
+            np.zeros((0, 2), np.float32),
+            np.zeros((0,), np.float32),
+            np.zeros((0,), np.float32),
+        )
+
+    centers = []
+    radii = []
+    metrics = []
+
+    min_r_nm, max_r_nm = radius_range_nm
+
+    for rp in regionprops(masks):
+
+        if rp.area < cfg.cpsam_min_area_px:
+            continue
+
+        cy, cx = rp.centroid
+
+        # robust outer-scale radius estimation
+        coords = rp.coords
+        d = np.sqrt((coords[:, 0] - cy) ** 2 + (coords[:, 1] - cx) ** 2)
+        r_px = np.percentile(d, 95)
+
+        r_nm = r_px * pixel_size_nm
+        if r_nm < min_r_nm or r_nm > max_r_nm:
+            continue
+
+        # optional circularity filter
+        if cfg.cpsam_min_circularity > 0:
+            per = rp.perimeter if rp.perimeter else 0
+            if per > 0:
+                circ = 4 * np.pi * rp.area / (per * per)
+                if circ < cfg.cpsam_min_circularity:
+                    continue
+
+        # metric
+        vals = img[rp.coords[:, 0], rp.coords[:, 1]]
+        metric = float(np.mean(vals)) if vals.size else 0.0
+
+        centers.append((cx, cy))
+        radii.append(r_px)
+        metrics.append(metric)
+
+    if not centers:
+        return (
+            np.zeros((0, 2), np.float32),
+            np.zeros((0,), np.float32),
+            np.zeros((0,), np.float32),
+        )
+
+    centers = np.asarray(centers, np.float32)
+    radii = np.asarray(radii, np.float32)
+    metrics = np.asarray(metrics, np.float32)
+
+    minDist_px = max(1.0, min_distance_nm / pixel_size_nm)
+
+    centers, radii, metrics = remove_duplicate_circles(
+        centers,
+        radii,
+        metrics,
+        min_distance_px=minDist_px,
+    )
+
+    return centers, radii, metrics
+
