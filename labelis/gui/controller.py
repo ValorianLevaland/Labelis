@@ -767,6 +767,17 @@ class LabelisController(QtCore.QObject):
         except Exception:
             pass
 
+        self.viewer.add_image(res.image_segment, ...)
+        if res.cpsam_instance_labels is not None:
+            if "CPSAM labels" in self.viewer.layers:
+                self.viewer.layers.remove(self.viewer.layers["CPSAM labels"])
+            self.viewer.add_labels(
+                res.cpsam_instance_labels,
+                name="CPSAM labels",
+                scale=(self._render_px_size_nm, self._render_px_size_nm),
+                opacity=0.6,
+            )
+
         def _npc_centers_px(npcs):
             if not npcs:
                 return np.zeros((0, 2), dtype=float)
