@@ -129,6 +129,16 @@ def load_localizations(path: str | pathlib.Path) -> pd.DataFrame:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df = df.dropna(subset=["x_nm_", "y_nm_", "sigma_nm_", "uncertainty_xy_nm_", "frame"])
 
+    # Drop rows with missing required values but log how many were removed
+    before = len(df)
+    df = df.dropna(subset=["x_nm_", "y_nm_", "sigma_nm_", "uncertainty_xy_nm_", "frame"])
+    n_dropped = before - len(df)
+    if n_dropped > 0:
+        import logging
+        logging.getLogger("labelis.io").warning(
+            f"load_localizations: dropped {n_dropped} rows with non‑numeric or missing values in required columns"
+        )
+    
     # Frame should be integer-like
     df["frame"] = df["frame"].astype(int)
 
