@@ -99,6 +99,22 @@ class LabelisDockWidget(QtWidgets.QWidget):
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(8)
 
+        #----------------------------
+        # Scroll area container
+        #----------------------------
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizeble(True)
+        root.addWidget(scroll)
+
+        #---------------------------
+        # Internal container widget
+        #---------------------------
+        container = QtWidgets.QWidget()
+        scroll.setWidget(container)
+
+        # Main layout for all groups
+        main_layout = QtWidgets.QVBoxLayout(container)
+
         # -------------------------
         # Group: Input + Render
         # -------------------------
