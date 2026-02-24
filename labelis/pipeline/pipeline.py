@@ -87,6 +87,8 @@ class PipelineResult:
     # summary
     summary: Dict[str, object] = None  # type: ignore
 
+    cpsam_instance_labels: Optional[np.ndarray] = None
+
 
 class PipelineAborted(RuntimeError):
     """Raised when a user aborts an interactive (step-by-step) run."""
@@ -425,6 +427,12 @@ def run_pipeline(
             expected_radius_nm=cfg.expected_npc_radius_nm,
             pixel_size_nm=cfg.render_px_size_nm,
         )
+
+        if cfg.segmentation_engine == "cpsam":
+            cpsam_instance_labels = <your label map>
+        else:
+            cpsam_instance_labels = None
+        
         if cycle_n == 1:
             image_segment_saved = image_segment.copy()
 
@@ -1194,5 +1202,6 @@ def run_pipeline(
         figure_paths=fig_paths,
         final_localizations_csv=str(final_locs_path),
         summary=summary,
+        cpsam_instance_labels=cpsam_instance_labels,
     )
     return res
