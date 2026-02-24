@@ -359,6 +359,22 @@ class LabelisController(QtCore.QObject):
         self._roi_polygon_nm = poly_nm
         self._roi_confirmed = True
 
+        # Convert to nm (x,y) for pipeline
+        px = float(self._render_px_size_nm)
+        poly_nm = [(float(v[1]) * px, float(v[0]) * px) for v in verts_yx]
+        # Validate polygon (simple and non‑degenerate)
+        try:
+            import shapely.geometry as _shgeom  # optional dependency
+            if not _shgeom.Polygon(poly_nm).is_valid or _shgeom.Polygon(poly_nm).area <= 0:
+                raise ValueError
+        except Exception:
+            self._error("Labelis", "ROI polygon is invalid or self‑intersecting.")
+            return
+
+        self._roi_polygon_nm = poly_nm
+        self._roi_confirmed = True
+        
+
         self.dock.set_analysis_enabled(True)
         self.dock.set_status(f"ROI confirmed ({len(poly_nm)} vertices). Now set analysis inputs and Run.")
 
@@ -457,6 +473,13 @@ class LabelisController(QtCore.QObject):
         self._worker.checkpoint_requested.connect(self._on_checkpoint_requested)
         self._worker.finished_ok.connect(self._analysis_ok)
         self._worker.finished_error.connect(self._analysis_error)
+
+        # Use queued connections to ensure UI methods run in the main thread
+        self._thread.started.connect(self._worker.run, type=QtCore.Qt.QueuedConnection)
+        self._worker.log_line.connect(self.log, type=QtCore.Qt.QueuedConnection)
+        self._worker.checkpoint_requested.connect(self._on_checkpoint_requested, type=QtCore.Qt.QueuedConnection)
+        self._worker.finished_ok.connect(self._analysis_ok, type=QtCore.Qt.QueuedConnection)
+        self._worker.finished_error.connect(self._analysis_error, type=QtCore.Qt.QueuedConnection)
 
         # Cleanup wiring
         self._worker.finished_ok.connect(self._thread.quit)
@@ -596,6 +619,8 @@ class LabelisController(QtCore.QObject):
             size = 8.0
             if radii_px.size == pts_yx.shape[0]:
                 size = np.clip(2.0 * radii_px, 2.0, 200.0)
+            else:
+                size = 6.0
             self.viewer.add_points(
                 pts_yx,
                 name="Candidates (preview)",
